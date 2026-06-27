@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"strict": true,
+		"alwaysStrict": true,
+		"allowJs": false,
+		"allowSyntheticDefaultImports": true,
+		"moduleResolution": "bundler",
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"skipLibCheck": true,
+		"lib": []
+	}
+}
