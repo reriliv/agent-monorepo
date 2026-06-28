@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+.chat-block {
+  @apply flex-1 flex flex-col;
+}
+
+.chat-header {
+  @apply flex items-center justify-between p-4 border-b;
+  border-color: var(--border);
+}
+
+.chat-header h1 {
+  @apply text-lg font-semibold text-gray-800;
+}
+
+.new-chat-btn {
+  @apply px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors;
+}
+
+.message-content {
+  @apply flex-1 overflow-y-auto p-4 space-y-4;
+}
+
+.message {
+  @apply flex items-start gap-3;
+}
+
+.message.user {
+  @apply flex-row-reverse;
+}
+
+.message-avatar {
+  @apply flex-shrink-0 w-10 h-10 flex items-center justify-center text-xl rounded-full;
+}
+
+.message.user .message-avatar {
+  @apply bg-purple-100;
+}
+
+.message.assistant .message-avatar {
+  @apply bg-blue-100;
+}
+
+.message-body {
+  @apply max-w-[90%] p-3 rounded-2xl;
+}
+
+.message.user .message-body {
+  @apply bg-purple-500 text-white rounded-tr-sm;
+}
+
+.message.assistant .message-body {
+  @apply bg-gray-100 text-gray-800 rounded-tl-sm;
+}
+
+.message-content-text {
+  @apply text-sm leading-relaxed whitespace-pre-wrap text-left;
+}
+
+.message-tool-calls {
+  @apply mt-2 space-y-1;
+}
+
+.tool-call {
+  @apply flex items-center gap-2 text-xs px-2 py-1 bg-gray-200 rounded;
+}
+
+.tool-name {
+  @apply font-semibold text-blue-600;
+}
+
+.tool-args {
+  @apply text-gray-600;
+}
+
+.message-tool-results {
+  @apply mt-2 space-y-1;
+}
+
+.tool-result {
+  @apply text-xs px-2 py-1 bg-green-100 text-green-800 rounded;
+}
+
+.user-input {
+  @apply flex items-end gap-2 p-4 border-t;
+  border-color: var(--border);
+}
+
+.input-area {
+  @apply flex-1 border rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent;
+  border-color: var(--border);
+  min-height: 60px;
+  max-height: 200px;
+}
+
+.send-button {
+  @apply px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 active:bg-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+}
+
+.typing-indicator {
+  @apply flex items-center gap-1;
+}
+
+.typing-dot {
+  @apply w-2 h-2 bg-gray-400 rounded-full animate-bounce;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
