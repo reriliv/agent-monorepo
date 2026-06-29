@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AgentState } from '../agent/graph/state.dto';
-import { HumanMessage, AIMessage } from 'langchain';
+import { GraphState } from '../agent/graph/state.dto';
+import { HumanMessage, AIMessage } from '@langchain/core/messages';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -22,8 +22,7 @@ export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
   private readonly storageDir = path.join(process.cwd(), 'data', 'conversations');
 
-  private stateStore = new Map<string, AgentState>();
-  private checkpointStore = new Map<string, any>();
+  private stateStore = new Map<string, GraphState>();
 
   constructor() {
     if (!fs.existsSync(this.storageDir)) {
@@ -31,15 +30,18 @@ export class MemoryService {
     }
   }
 
-  async saveState(sessionId: string, state: AgentState) {
+  async saveState(sessionId: string, state: GraphState) {
     this.logger.debug(`Saving state for session: ${sessionId}`);
     const existingState = this.stateStore.get(sessionId);
-    this.stateStore.set(sessionId, {
+    const mergedState: GraphState = {
+      ...existingState,
       ...state,
+      messages: state.messages || existingState?.messages || [],
       summary: existingState?.summary || state.summary,
       title: existingState?.title || state.title,
-    });
-    await this.persistConversation(sessionId, this.stateStore.get(sessionId)!);
+    };
+    this.stateStore.set(sessionId, mergedState);
+    await this.persistConversation(sessionId, mergedState);
   }
 
   async saveTitleAndSummary(sessionId: string, title: string, summary: string) {
@@ -76,14 +78,6 @@ export class MemoryService {
     }
 
     return null;
-  }
-
-  async saveCheckPoint(sessionId: string, checkpoint: any) {
-    this.checkpointStore.set(sessionId, checkpoint);
-  }
-
-  async loadCheckPoint(sessionId: string) {
-    return this.checkpointStore.get(sessionId) || null;
   }
 
   async cleanExpiredSessions() {
@@ -126,7 +120,22 @@ export class MemoryService {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
         this.stateStore.delete(sessionId);
-        this.checkpointStore.delete(sessionId);
+
+        const checkpointDir = path.join(process.cwd(), 'data', 'checkpoints', 'checkpoints', sessionId);
+        if (fs.existsSync(checkpointDir)) {
+          fs.rmSync(checkpointDir, { recursive: true, force: true });
+        }
+
+        const writesDir = path.join(process.cwd(), 'data', 'checkpoints', 'writes');
+        if (fs.existsSync(writesDir)) {
+          const files = fs.readdirSync(writesDir);
+          for (const file of files) {
+            if (file.startsWith(`${sessionId}-`)) {
+              fs.unlinkSync(path.join(writesDir, file));
+            }
+          }
+        }
+
         return true;
       }
       return false;
@@ -140,7 +149,7 @@ export class MemoryService {
     return path.join(this.storageDir, `${sessionId}.json`);
   }
 
-  private async persistConversation(sessionId: string, state: AgentState): Promise<void> {
+  private async persistConversation(sessionId: string, state: GraphState): Promise<void> {
     try {
       const filePath = this.getFilePath(sessionId);
       const existingData = fs.existsSync(filePath)
@@ -149,11 +158,23 @@ export class MemoryService {
 
       const conversation: Conversation = {
         sessionId,
-        messages: state.messages.map((msg) => ({
-          role: msg._getType() === 'human' ? 'user' : 'assistant',
-          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-          timestamp: new Date().toISOString(),
-        })),
+        messages: (state.messages || []).map((msg) => {
+          let role = 'assistant';
+          const msgObj = msg as unknown as { _getType?: () => string; role?: string };
+          if (typeof msgObj._getType === 'function') {
+            role = msgObj._getType() === 'human' ? 'user' : 'assistant';
+          } else if (msgObj.role) {
+            role = msgObj.role === 'human' ? 'user' : msgObj.role === 'assistant' ? 'assistant' : 'assistant';
+          }
+
+          const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+
+          return {
+            role,
+            content,
+            timestamp: new Date().toISOString(),
+          };
+        }),
         title: state.title || existingData.title || '',
         summary: state.summary || existingData.summary || '',
         createdAt: existingData.createdAt || new Date().toISOString(),
@@ -167,7 +188,7 @@ export class MemoryService {
     }
   }
 
-  private async loadConversation(sessionId: string): Promise<AgentState | null> {
+  private async loadConversation(sessionId: string): Promise<GraphState | null> {
     try {
       const filePath = this.getFilePath(sessionId);
       if (!fs.existsSync(filePath)) {
@@ -184,11 +205,13 @@ export class MemoryService {
         }
       });
 
-      const state: AgentState = {
+      const state: GraphState = {
         messages,
         title: data.title || '',
         summary: data.summary || '',
         sessionId: data.sessionId,
+        traceId: '',
+        iterations: 0,
       };
 
       return state;

@@ -11,6 +11,9 @@ agent-monorepo2/
 │   │   └── src/
 │   │       ├── agent/       # Agent 核心模块
 │   │       │   ├── graph/   # LangGraph 状态图
+│   │       │   │   ├── nodes/       # 图节点（conversation, tools）
+│   │       │   │   ├── state.dto.ts # 状态定义（Annotation.Root）
+│   │       │   │   └── graph.factory.ts
 │   │       │   ├── tools/   # 工具集
 │   │       │   ├── routers/ # 路由逻辑
 │   │       │   └── agent.controller.ts
@@ -34,7 +37,8 @@ agent-monorepo2/
 
 ### 后端
 - **NestJS** - Node.js 框架
-- **LangGraph + LangChain** - Agent 状态机与工具调用
+- **LangGraph v1.4.x** - Agent 状态机（标准 ReAct 循环）
+- **LangChain** - 工具系统与消息处理
 - **DeepSeek API** - LLM 模型（deepseek-v4-flash）
 
 ### 前端
@@ -72,6 +76,11 @@ agent-monorepo2/
 - 历史对话列表
 - 切换/删除对话
 - 对话总结与标题生成
+
+### 4. Agent 架构
+- 标准 ReAct 循环模式
+- 最大迭代次数限制（防止无限循环）
+- 工具调用验证与幻觉防护
 
 ## 快速开始
 
@@ -168,6 +177,50 @@ type CleanEvent =
 
 向量知识库存储在 `data/vector-store/store.json`。
 
+## Agent 工作原理
+
+### ReAct 循环流程
+
+```
+START → conversation(调用LLM) → router → [tools | END]
+           ↑                               |
+           └────────── tools(执行工具) ←────┘
+```
+
+**循环机制**：
+
+1. **conversation 节点**：调用 LLM，根据对话历史决定是否调用工具
+2. **router 路由**：检查 LLM 返回是否包含 `tool_calls`
+   - 有工具调用 → 路由到 `tools` 节点
+   - 无工具调用 → 结束（END）
+3. **tools 节点**：执行工具，将结果添加到消息历史
+4. **循环回到 conversation**：LLM 根据工具结果继续决策
+
+### LangGraph 边的作用
+
+**addEdge** - 固定边，无条件跳转：
+```typescript
+.addEdge(START, 'conversation')   // 从起点直接到 conversation
+.addEdge('tools', 'conversation') // 工具执行完直接回到 conversation
+```
+
+**addConditionalEdges** - 条件边，根据状态动态决定下一个节点：
+```typescript
+.addConditionalEdges('conversation', (state) => {
+  const lastMessage = state.messages[state.messages.length - 1];
+  if (lastMessage.tool_calls?.length > 0) {
+    return 'tools';  // 有工具调用 → 去执行工具
+  }
+  return END;        // 无工具调用 → 结束
+})
+```
+
+### 幻觉防护
+
+1. **最大迭代次数**：限制循环最多执行 10 次
+2. **提示词约束**：引导 LLM 不要重复调用同一工具
+3. **反馈回路**：工具执行结果（成功/失败）会作为消息添加到历史，LLM 可看到并调整策略
+
 ## 开发指南
 
 ### 添加新工具
@@ -209,6 +262,22 @@ interface Message {
 }
 ```
 
+### 状态定义
+
+使用 LangGraph 标准的 `Annotation.Root` 定义状态：
+
+```typescript
+import { Annotation } from '@langchain/langgraph';
+
+const GraphStateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: (left, right) => left.concat(right),
+    default: () => [],
+  }),
+  // ... 其他字段
+});
+```
+
 ## 环境变量
 
 | 变量名 | 说明 | 默认值 |
@@ -223,3 +292,4 @@ interface Message {
 1. **API Key 安全**：不要将 `.env` 文件提交到版本控制
 2. **文件工具**：使用 agent 的文件操作工具时，注意路径是相对于服务运行目录
 3. **向量存储**：当前使用关键词匹配作为降级方案，需要 OpenAI API Key 才能启用语义搜索
+4. **循环限制**：最大迭代次数为 10，复杂任务可能需要调整
