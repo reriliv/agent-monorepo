@@ -1,9 +1,9 @@
 import { useCallback, useState, useRef, useEffect } from "react";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import type { Message, CleanEvent } from '@monorepo/shared';
-import { agentService } from '../../services/agent.service';
-import './chat.css';
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Message, CleanEvent } from "@monorepo/shared";
+import { agentService } from "../../services/agent.service";
+import "./chat.css";
 
 interface ChatProps {
   sessionId: string;
@@ -12,7 +12,12 @@ interface ChatProps {
   initialMessages?: Message[];
 }
 
-export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initialMessages = [] }: ChatProps) => {
+export const Chat = ({
+  sessionId,
+  onSessionChange,
+  onConversationUpdate,
+  initialMessages = [],
+}: ChatProps) => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
@@ -20,12 +25,12 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
 
   useEffect(() => {
     if (initialMessages.length > 0) {
-      setMessages(initialMessages);
+      return () => setMessages(initialMessages);
     }
   }, [initialMessages]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   useEffect(() => {
@@ -40,15 +45,16 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
 
         const userMessage: Message = {
           id: crypto.randomUUID(),
-          role: 'user',
+          role: "user",
           content: message,
         };
-        setMessages(prev => [...prev, userMessage]);
+        setMessages((prev) => [...prev, userMessage]);
         setIsLoading(true);
         setMessage("");
 
         try {
           const res = await agentService.chatSSE(message.trim(), sessionId);
+          // const res = await agentService.testSSE();
 
           if (!res.ok) {
             throw new Error(`请求失败: ${res.status}`);
@@ -68,11 +74,13 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
+            console.log("buffer", buffer);
             const lines = buffer.split("\n");
             buffer = lines.pop() ?? "";
 
             for (const line of lines) {
               const trimmedLine = line.trim();
+              console.log("trimmedLine", trimmedLine);
               if (trimmedLine.startsWith("data:")) {
                 const dataStr = trimmedLine.slice(5).trim();
 
@@ -86,91 +94,105 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
                 const event = parsed as CleanEvent;
 
                 switch (event.type) {
-                  case 'token':
+                  case "token":
                     if (!currentAssistantMessage) {
                       const newMsg: Message = {
                         id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: '',
+                        role: "assistant",
+                        content: "",
                       };
                       currentAssistantMessage = newMsg;
-                      setMessages(prev => [...prev, newMsg]);
+                      setMessages((prev) => [...prev, newMsg]);
                     }
-                    currentAssistantMessage.content += event.content || '';
+                    currentAssistantMessage.content += event.content || "";
                     const updatedTokenMsg = currentAssistantMessage;
-                    setMessages(prev => prev.map(m =>
-                      m.id === updatedTokenMsg.id ? updatedTokenMsg : m
-                    ));
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === updatedTokenMsg.id ? updatedTokenMsg : m,
+                      ),
+                    );
                     break;
 
-                  case 'message':
+                  case "message":
                     if (!currentAssistantMessage) {
                       const newMsg: Message = {
                         id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: event.content || '',
+                        role: "assistant",
+                        content: event.content || "",
                       };
                       currentAssistantMessage = newMsg;
-                      setMessages(prev => [...prev, newMsg]);
+                      setMessages((prev) => [...prev, newMsg]);
                     } else {
                       if (event.content) {
                         currentAssistantMessage.content = event.content;
                       }
                     }
                     if (event.toolName) {
-                      currentAssistantMessage.toolCalls = [{
-                        name: event.toolName,
-                        args: event.toolArgs!,
-                      }];
+                      currentAssistantMessage.toolCalls = [
+                        {
+                          name: event.toolName,
+                          args: event.toolArgs!,
+                        },
+                      ];
                     }
                     const updatedMsg = currentAssistantMessage;
-                    setMessages(prev => prev.map(m =>
-                      m.id === updatedMsg.id ? updatedMsg : m
-                    ));
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === updatedMsg.id ? updatedMsg : m,
+                      ),
+                    );
                     break;
 
-                  case 'tool_start':
+                  case "tool_start":
                     if (!currentAssistantMessage) {
                       const newMsg: Message = {
                         id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: '',
+                        role: "assistant",
+                        content: "",
                       };
                       currentAssistantMessage = newMsg;
-                      setMessages(prev => [...prev, newMsg]);
+                      setMessages((prev) => [...prev, newMsg]);
                     }
                     if (event.toolName) {
-                      currentAssistantMessage.toolCalls = [{
-                        name: event.toolName,
-                        args: event.toolArgs!,
-                      }];
+                      currentAssistantMessage.toolCalls = [
+                        {
+                          name: event.toolName,
+                          args: event.toolArgs!,
+                        },
+                      ];
                     }
                     const updatedToolMsg = currentAssistantMessage;
-                    setMessages(prev => prev.map(m =>
-                      m.id === updatedToolMsg.id ? updatedToolMsg : m
-                    ));
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === updatedToolMsg.id ? updatedToolMsg : m,
+                      ),
+                    );
                     break;
 
-                  case 'tool_end':
+                  case "tool_end":
                     if (currentAssistantMessage) {
                       if (!currentAssistantMessage.toolResults) {
                         currentAssistantMessage.toolResults = [];
                       }
-                      currentAssistantMessage.toolResults.push(event.toolResult || '');
+                      currentAssistantMessage.toolResults.push(
+                        event.toolResult || "",
+                      );
                       const updatedResultMsg = currentAssistantMessage;
-                      setMessages(prev => prev.map(m =>
-                        m.id === updatedResultMsg.id ? updatedResultMsg : m
-                      ));
+                      setMessages((prev) =>
+                        prev.map((m) =>
+                          m.id === updatedResultMsg.id ? updatedResultMsg : m,
+                        ),
+                      );
                     }
                     break;
 
-                  case 'error':
+                  case "error":
                     const errorMessage: Message = {
                       id: crypto.randomUUID(),
-                      role: 'assistant',
+                      role: "assistant",
                       content: `出错了: ${event.content}`,
                     };
-                    setMessages(prev => [...prev, errorMessage]);
+                    setMessages((prev) => [...prev, errorMessage]);
                     currentAssistantMessage = null;
                     break;
                 }
@@ -181,10 +203,10 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
           console.error(err);
           const errorMessage: Message = {
             id: crypto.randomUUID(),
-            role: 'assistant',
+            role: "assistant",
             content: `出错了: ${(err as Error).message}`,
           };
-          setMessages(prev => [...prev, errorMessage]);
+          setMessages((prev) => [...prev, errorMessage]);
         } finally {
           setIsLoading(false);
           onConversationUpdate();
@@ -194,7 +216,7 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
     );
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage(e as unknown as React.MouseEvent<HTMLButtonElement>);
     }
@@ -206,22 +228,26 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
   };
 
   return (
-    <div className='chat-block'>
+    <div className="chat-block">
       <div className="chat-header">
         <h1>AI Chat</h1>
-        <button onClick={handleNewChat} className="new-chat-btn">新对话</button>
+        <button onClick={handleNewChat} className="new-chat-btn">
+          新对话
+        </button>
       </div>
 
       <div className="message-content">
         {messages.map((msg) => (
           <div key={msg.id} className={`message ${msg.role}`}>
             <div className="message-avatar">
-              {msg.role === 'user' ? '👤' : '🤖'}
+              {msg.role === "user" ? "👤" : "🤖"}
             </div>
             <div className="message-body">
               <div className="message-content-text">
-                {msg.role === 'assistant' ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                {msg.role === "assistant" ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {msg.content}
+                  </ReactMarkdown>
                 ) : (
                   msg.content
                 )}
@@ -231,7 +257,9 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
                   {msg.toolCalls.map((tc, i) => (
                     <div key={i} className="tool-call">
                       <span className="tool-name">{tc.name}</span>
-                      <span className="tool-args">{JSON.stringify(tc.args)}</span>
+                      <span className="tool-args">
+                        {JSON.stringify(tc.args)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -240,7 +268,9 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
                 <div className="message-tool-results">
                   {msg.toolResults.map((result, i) => (
                     <div key={i} className="tool-result">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {result}
+                      </ReactMarkdown>
                     </div>
                   ))}
                 </div>
@@ -273,8 +303,12 @@ export const Chat = ({ sessionId, onSessionChange, onConversationUpdate, initial
           placeholder="输入消息，按 Enter 发送..."
           disabled={isLoading}
         ></textarea>
-        <button onClick={handleSendMessage} className='send-button' disabled={isLoading || !message.trim()}>
-          {isLoading ? '发送中...' : '发送'}
+        <button
+          onClick={handleSendMessage}
+          className="send-button"
+          disabled={isLoading || !message.trim()}
+        >
+          {isLoading ? "发送中..." : "发送"}
         </button>
       </div>
     </div>
