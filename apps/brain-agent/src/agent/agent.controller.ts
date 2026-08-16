@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Query, Sse, Body, Delete, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  Sse,
+  Body,
+  Delete,
+  Param,
+} from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { GraphFactory } from './graph/graph.factory';
 import { HumanMessage } from 'langchain';
@@ -10,7 +19,7 @@ export class AgentController {
   constructor(
     private readonly graphFactory: GraphFactory,
     private readonly memoryService: MemoryService,
-  ) { }
+  ) {}
 
   @Get('health')
   health() {
@@ -18,7 +27,7 @@ export class AgentController {
   }
 
   @Post('chat')
-  async chat(@Body() body: { message: string; sessionId?: string; }) {
+  async chat(@Body() body: { message: string; sessionId?: string }) {
     const { message, sessionId } = body;
     const sid = sessionId || `session-${Date.now()}`;
 
@@ -45,7 +54,7 @@ export class AgentController {
   @Post('chat/sse')
   @Sse()
   async chatSSEPost(
-    @Body() body: { message: string; sessionId?: string; },
+    @Body() body: { message: string; sessionId?: string },
   ): Promise<Observable<MessageEvent>> {
     const { message, sessionId } = body;
     return this.createEventStream(message, sessionId);
@@ -60,7 +69,9 @@ export class AgentController {
 
     (async () => {
       try {
-        const stream = this.graphFactory.streamEvents(sid, { messages: [new HumanMessage(message)] });
+        const stream = this.graphFactory.streamEvents(sid, [
+          new HumanMessage(message),
+        ]);
         for await (const event of stream) {
           const cleanEvent = this.transformEvent(event);
           if (cleanEvent) {
@@ -138,7 +149,8 @@ export class AgentController {
       if (output) {
         return {
           type: 'tool_end',
-          toolResult: typeof output === 'string' ? output : JSON.stringify(output),
+          toolResult:
+            typeof output === 'string' ? output : JSON.stringify(output),
         };
       }
     }
@@ -147,13 +159,11 @@ export class AgentController {
   }
 
   @Post('chat/stream')
-  async chatStream(@Body() body: { message: string; sessionId?: string; }) {
+  async chatStream(@Body() body: { message: string; sessionId?: string }) {
     const { message, sessionId } = body;
     const sid = sessionId || `session-${Date.now()}`;
 
-    const stream = this.graphFactory.stream(sid, {
-      messages: [new HumanMessage(message)],
-    });
+    const stream = this.graphFactory.stream(sid, [new HumanMessage(message)]);
 
     const responses: any[] = [];
     for await (const chunk of stream) {
@@ -181,7 +191,10 @@ export class AgentController {
 
     const messages = state.messages.map((msg) => ({
       role: msg._getType() === 'human' ? 'user' : 'assistant',
-      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+      content:
+        typeof msg.content === 'string'
+          ? msg.content
+          : JSON.stringify(msg.content),
     }));
 
     return {
@@ -221,7 +234,7 @@ export class AgentController {
 
       eventSubject.next({
         type: 'start',
-        data: 'sse connect'
+        data: 'sse connect',
       } as MessageEvent);
     });
   }

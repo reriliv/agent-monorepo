@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/agent": {
-        target: "http://localhost:3001",
+        target: "http://localhost:3002",
         changeOrigin: true,
       },
     },

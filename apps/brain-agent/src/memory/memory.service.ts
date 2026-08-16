@@ -20,7 +20,11 @@ interface Conversation {
 @Injectable()
 export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
-  private readonly storageDir = path.join(process.cwd(), 'data', 'conversations');
+  private readonly storageDir = path.join(
+    process.cwd(),
+    'data',
+    'conversations',
+  );
 
   private stateStore = new Map<string, AgentState>();
   private checkpointStore = new Map<string, any>();
@@ -31,7 +35,7 @@ export class MemoryService {
     }
   }
 
-  async saveState(sessionId: string, state: AgentState) {
+  saveState(sessionId: string, state: AgentState) {
     this.logger.debug(`Saving state for session: ${sessionId}`);
     const existingState = this.stateStore.get(sessionId);
     this.stateStore.set(sessionId, {
@@ -39,29 +43,29 @@ export class MemoryService {
       summary: existingState?.summary || state.summary,
       title: existingState?.title || state.title,
     });
-    await this.persistConversation(sessionId, this.stateStore.get(sessionId)!);
+    this.persistConversation(sessionId, this.stateStore.get(sessionId)!);
   }
 
-  async saveTitleAndSummary(sessionId: string, title: string, summary: string) {
+  saveTitleAndSummary(sessionId: string, title: string, summary: string) {
     const state = this.stateStore.get(sessionId);
     if (state) {
       state.title = title;
       state.summary = summary;
       this.stateStore.set(sessionId, state);
-      await this.persistConversation(sessionId, state);
+      this.persistConversation(sessionId, state);
     } else {
-      const loadedState = await this.loadConversation(sessionId);
+      const loadedState = this.loadConversation(sessionId);
       if (loadedState) {
         loadedState.title = title;
         loadedState.summary = summary;
         this.stateStore.set(sessionId, loadedState);
-        await this.persistConversation(sessionId, loadedState);
+        this.persistConversation(sessionId, loadedState);
       }
     }
     this.logger.log(`Saved title and summary for session: ${sessionId}`);
   }
 
-  async loadState(sessionId: string) {
+  loadState(sessionId: string) {
     this.logger.debug(`Loading state for session: ${sessionId}`);
 
     const cachedState = this.stateStore.get(sessionId);
@@ -69,7 +73,7 @@ export class MemoryService {
       return cachedState;
     }
 
-    const persistedState = await this.loadConversation(sessionId);
+    const persistedState = this.loadConversation(sessionId);
     if (persistedState) {
       this.stateStore.set(sessionId, persistedState);
       return persistedState;
@@ -78,29 +82,36 @@ export class MemoryService {
     return null;
   }
 
-  async saveCheckPoint(sessionId: string, checkpoint: any) {
-    this.checkpointStore.set(sessionId, checkpoint);
-  }
+  // saveCheckPoint(sessionId: string, checkpoint: any) {
+  //   this.checkpointStore.set(sessionId, checkpoint);
+  // }
 
-  async loadCheckPoint(sessionId: string) {
-    return this.checkpointStore.get(sessionId) || null;
-  }
+  // loadCheckPoint(sessionId: string) {
+  //   return this.checkpointStore.get(sessionId) || null;
+  // }
 
-  async cleanExpiredSessions() {
+  cleanExpiredSessions() {
     this.logger.log('Running memory cleanup...');
   }
 
-  async listConversations(): Promise<Array<{ sessionId: string; title: string; summary: string; updatedAt: string }>> {
+  listConversations() {
     try {
       const files = fs.readdirSync(this.storageDir);
-      const conversations: Array<{ sessionId: string; title: string; summary: string; updatedAt: string }> = [];
+      const conversations: Array<{
+        sessionId: string;
+        title: string;
+        summary: string;
+        updatedAt: string;
+      }> = [];
 
       for (const file of files) {
         if (file.endsWith('.json')) {
           const sessionId = file.replace('.json', '');
           const filePath = path.join(this.storageDir, file);
           try {
-            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            const data = JSON.parse(
+              fs.readFileSync(filePath, 'utf-8'),
+            ) as Conversation;
             conversations.push({
               sessionId,
               title: data.title || '',
@@ -113,14 +124,19 @@ export class MemoryService {
         }
       }
 
-      return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return conversations.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
     } catch (error) {
-      this.logger.error(`Failed to list conversations: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to list conversations: ${(error as Error).message}`,
+      );
       return [];
     }
   }
 
-  async deleteConversation(sessionId: string): Promise<boolean> {
+  deleteConversation(sessionId: string) {
     try {
       const filePath = this.getFilePath(sessionId);
       if (fs.existsSync(filePath)) {
@@ -131,7 +147,9 @@ export class MemoryService {
       }
       return false;
     } catch (error) {
-      this.logger.error(`Failed to delete conversation: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to delete conversation: ${(error as Error).message}`,
+      );
       return false;
     }
   }
@@ -140,18 +158,23 @@ export class MemoryService {
     return path.join(this.storageDir, `${sessionId}.json`);
   }
 
-  private async persistConversation(sessionId: string, state: AgentState): Promise<void> {
+  private persistConversation(sessionId: string, state: AgentState) {
     try {
       const filePath = this.getFilePath(sessionId);
-      const existingData = fs.existsSync(filePath)
-        ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-        : {};
+      const existingData = (
+        fs.existsSync(filePath)
+          ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+          : {}
+      ) as Conversation;
 
       const conversation: Conversation = {
         sessionId,
         messages: state.messages.map((msg) => ({
           role: msg._getType() === 'human' ? 'user' : 'assistant',
-          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          content:
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content),
           timestamp: new Date().toISOString(),
         })),
         title: state.title || existingData.title || '',
@@ -160,23 +183,31 @@ export class MemoryService {
         updatedAt: new Date().toISOString(),
       };
 
-      fs.writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify(conversation, null, 2),
+        'utf-8',
+      );
       this.logger.debug(`Conversation persisted to: ${filePath}`);
     } catch (error) {
-      this.logger.error(`Failed to persist conversation: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to persist conversation: ${(error as Error).message}`,
+      );
     }
   }
 
-  private async loadConversation(sessionId: string): Promise<AgentState | null> {
+  private loadConversation(sessionId: string) {
     try {
       const filePath = this.getFilePath(sessionId);
       if (!fs.existsSync(filePath)) {
         return null;
       }
 
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const data = JSON.parse(
+        fs.readFileSync(filePath, 'utf-8'),
+      ) as Conversation;
 
-      const messages = (data.messages || []).map((msg: any) => {
+      const messages = (data.messages || []).map((msg) => {
         if (msg.role === 'user') {
           return new HumanMessage(msg.content);
         } else {
@@ -184,16 +215,19 @@ export class MemoryService {
         }
       });
 
-      const state: AgentState = {
+      const state = {
         messages,
         title: data.title || '',
         summary: data.summary || '',
         sessionId: data.sessionId,
+        traceId: '',
       };
 
       return state;
     } catch (error) {
-      this.logger.error(`Failed to load conversation: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to load conversation: ${(error as Error).message}`,
+      );
       return null;
     }
   }

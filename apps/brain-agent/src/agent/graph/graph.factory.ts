@@ -1,22 +1,45 @@
-import { MemorySaver, START, StateGraph } from '@langchain/langgraph';
+import {
+  ExtractStateType,
+  GetStateOptions,
+  MemorySaver,
+  START,
+  StateGraph,
+} from '@langchain/langgraph';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConversationNode } from './nodes/conversation.node';
 import { ConversationRouter } from '../routers/conversation.router';
 import { MemoryService } from '../../memory/memory.service';
-import { AgentState } from './state.dto';
+import { AgentState, AgentStateSchema, StateUpdate } from './state.dto';
 import { BaseMessage } from 'langchain';
+import { RunnableConfig } from '@langchain/core/runnables';
 
-type GraphState = {
+/* type GraphState = {
   messages: BaseMessage[];
   title: string;
   summary: string;
   sessionId: string;
   traceId: string;
+}; */
+
+type CompiledGraph = {
+  invoke: (
+    state: AgentState,
+    config: RunnableConfig,
+  ) => Promise<ExtractStateType<AgentState, StateUpdate>>;
+  stream: (state: AgentState, config: RunnableConfig) => Promise<StateUpdate>;
+  streamEvents: (
+    state: AgentState,
+    config: RunnableConfig,
+  ) => Promise<StateUpdate>;
+  getState: (
+    config: RunnableConfig,
+    options: GetStateOptions,
+  ) => Promise<AgentState>;
 };
 
 @Injectable()
 export class GraphFactory implements OnModuleInit {
-  private compiledGraph: any;
+  private compiledGraph: CompiledGraph;
   private checkpoint: MemorySaver;
 
   constructor(
@@ -27,64 +50,44 @@ export class GraphFactory implements OnModuleInit {
     this.checkpoint = new MemorySaver();
   }
 
-  async onModuleInit() {
-    await this.buildGraph();
+  onModuleInit() {
+    this.buildGraph();
   }
 
-  private async buildGraph() {
-    const workflow = new StateGraph<GraphState>({
-      channels: {
-        messages: {
-          reducer: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
-          default: () => [],
-        },
-        title: {
-          reducer: (x: string, y: string) => y ?? x,
-          default: () => '',
-        },
-        summary: {
-          reducer: (x: string, y: string) => y ?? x,
-          default: () => '',
-        },
-        sessionId: {
-          reducer: (x: string, y: string) => y ?? x,
-          default: () => '',
-        },
-        traceId: {
-          reducer: (x: string, y: string) => y ?? x,
-          default: () => '',
-        },
-      },
-    })
-      .addNode('conversation', async (state: GraphState) => {
+  private buildGraph() {
+    const workflow = new StateGraph(AgentStateSchema)
+      .addNode('conversation', async (state) => {
         return this.conversationNode.invoke(state);
       })
       .addEdge(START, 'conversation')
-      .addConditionalEdges('conversation', (state: GraphState) => {
-        return this.conversationRouter.route(state as unknown as AgentState);
+      .addConditionalEdges('conversation', (state) => {
+        return this.conversationRouter.route(state);
       });
 
     this.compiledGraph = workflow.compile({
       checkpointer: this.checkpoint,
-    });
+    }) as unknown as CompiledGraph;
   }
 
-  async invoke(sessionId: string, input: any) {
-    const savedState = await this.memoryService.loadState(sessionId);
+  async invoke(sessionId: string, messages: BaseMessage[]) {
+    const savedState = this.memoryService.loadState(sessionId);
 
-    const result = await this.compiledGraph.invoke({
-      messages: input.messages || [],
-      title: savedState?.title || '',
-      summary: savedState?.summary || '',
-      sessionId,
-      traceId: '',
-    }, {
-      configurable: {
-        thread_id: sessionId,
+    const result = await this.compiledGraph.invoke(
+      {
+        messages,
+        title: savedState?.title || '',
+        summary: savedState?.summary || '',
+        sessionId,
+        traceId: '',
       },
-    });
+      {
+        configurable: {
+          thread_id: sessionId,
+        },
+      },
+    );
 
-    await this.memoryService.saveState(sessionId, result);
+    this.memoryService.saveState(sessionId, result as AgentState);
 
     return {
       messages: result.messages,
@@ -93,22 +96,25 @@ export class GraphFactory implements OnModuleInit {
     };
   }
 
-  async *stream(sessionId: string, input: any) {
-    const savedState = await this.memoryService.loadState(sessionId);
+  async *stream(sessionId: string, messages: BaseMessage[]) {
+    const savedState = this.memoryService.loadState(sessionId);
 
-    const stream = await this.compiledGraph.stream({
-      messages: input.messages || [],
-      title: savedState?.title || '',
-      summary: savedState?.summary || '',
-      sessionId,
-      traceId: '',
-    }, {
-      configurable: {
-        thread_id: sessionId,
+    const stream = await this.compiledGraph.stream(
+      {
+        messages,
+        title: savedState?.title || '',
+        summary: savedState?.summary || '',
+        sessionId,
+        traceId: '',
       },
-    });
+      {
+        configurable: {
+          thread_id: sessionId,
+        },
+      },
+    );
 
-    let finalState: any = null;
+    let finalState: AgentState | null = null;
     for await (const chunk of stream) {
       yield chunk;
       finalState = chunk;
@@ -122,18 +128,21 @@ export class GraphFactory implements OnModuleInit {
   async *streamEvents(sessionId: string, input: any) {
     const savedState = await this.memoryService.loadState(sessionId);
 
-    const stream = await this.compiledGraph.streamEvents({
-      messages: input.messages || [],
-      title: savedState?.title || '',
-      summary: savedState?.summary || '',
-      sessionId,
-      traceId: '',
-    }, {
-      configurable: {
-        thread_id: sessionId,
+    const stream = await this.compiledGraph.streamEvents(
+      {
+        messages: input.messages || [],
+        title: savedState?.title || '',
+        summary: savedState?.summary || '',
+        sessionId,
+        traceId: '',
       },
-      version: 'v2',
-    });
+      {
+        configurable: {
+          thread_id: sessionId,
+        },
+        version: 'v2',
+      },
+    );
 
     for await (const event of stream) {
       yield event;

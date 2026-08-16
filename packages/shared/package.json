@@ -4,9 +4,18 @@
 	"description": "Shared types and utilities for monorepo",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"default": "./dist/index.js",
+			"import": "./dist/index.js",
+			"require": "./dist/index.js",
+			"types": "./dist/index.d.js"
+		}
+	},
 	"scripts": {
-		"build": "tsc",
-		"dev": "tsc --watch"
+		"build": "pnpm clean && tsc",
+		"dev": "tsc --watch",
+		"clean": "rm -rf ./dist"
 	},
 	"keywords": [],
 	"author": "",
